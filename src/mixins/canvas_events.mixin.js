@@ -1,4 +1,4 @@
-(function(){
+(function() {
 
   var cursorOffset = {
     mt: 0, // n
@@ -49,11 +49,12 @@
       addListener(this.upperCanvasEl, 'touchstart', this._onMouseDown);
       addListener(this.upperCanvasEl, 'touchmove', this._onMouseMove);
 
-      if (typeof Event !== 'undefined' && 'add' in Event) {
-        Event.add(this.upperCanvasEl, 'gesture', this._onGesture);
-        Event.add(this.upperCanvasEl, 'drag', this._onDrag);
-        Event.add(this.upperCanvasEl, 'orientation', this._onOrientationChange);
-        Event.add(this.upperCanvasEl, 'shake', this._onShake);
+      if (typeof eventjs !== 'undefined' && 'add' in eventjs) {
+        eventjs.add(this.upperCanvasEl, 'gesture', this._onGesture);
+        eventjs.add(this.upperCanvasEl, 'drag', this._onDrag);
+        eventjs.add(this.upperCanvasEl, 'orientation', this._onOrientationChange);
+        eventjs.add(this.upperCanvasEl, 'shake', this._onShake);
+        eventjs.add(this.upperCanvasEl, 'longpress', this._onLongPress);
       }
     },
 
@@ -68,6 +69,7 @@
       this._onGesture = this._onGesture.bind(this);
       this._onDrag = this._onDrag.bind(this);
       this._onShake = this._onShake.bind(this);
+      this._onLongPress = this._onLongPress.bind(this);
       this._onOrientationChange = this._onOrientationChange.bind(this);
       this._onMouseWheel = this._onMouseWheel.bind(this);
     },
@@ -85,11 +87,12 @@
       removeListener(this.upperCanvasEl, 'touchstart', this._onMouseDown);
       removeListener(this.upperCanvasEl, 'touchmove', this._onMouseMove);
 
-      if (typeof Event !== 'undefined' && 'remove' in Event) {
-        Event.remove(this.upperCanvasEl, 'gesture', this._onGesture);
-        Event.remove(this.upperCanvasEl, 'drag', this._onDrag);
-        Event.remove(this.upperCanvasEl, 'orientation', this._onOrientationChange);
-        Event.remove(this.upperCanvasEl, 'shake', this._onShake);
+      if (typeof eventjs !== 'undefined' && 'remove' in eventjs) {
+        eventjs.remove(this.upperCanvasEl, 'gesture', this._onGesture);
+        eventjs.remove(this.upperCanvasEl, 'drag', this._onDrag);
+        eventjs.remove(this.upperCanvasEl, 'orientation', this._onOrientationChange);
+        eventjs.remove(this.upperCanvasEl, 'shake', this._onShake);
+        eventjs.remove(this.upperCanvasEl, 'longpress', this._onLongPress);
       }
     },
 
@@ -125,8 +128,8 @@
      * @param {Event} [e] Event object fired on Event.js orientation change
      * @param {Event} [self] Inner Event object
      */
-    _onOrientationChange: function(e,self) {
-      this.__onOrientationChange && this.__onOrientationChange(e,self);
+    _onOrientationChange: function(e, self) {
+      this.__onOrientationChange && this.__onOrientationChange(e, self);
     },
 
     /**
@@ -135,7 +138,16 @@
      * @param {Event} [self] Inner Event object
      */
     _onShake: function(e, self) {
-      this.__onShake && this.__onShake(e,self);
+      this.__onShake && this.__onShake(e, self);
+    },
+
+    /**
+     * @private
+     * @param {Event} [e] Event object fired on Event.js shake
+     * @param {Event} [self] Inner Event object
+     */
+    _onLongPress: function(e, self) {
+      this.__onLongPress && this.__onLongPress(e, self);
     },
 
     /**
@@ -338,6 +350,11 @@
           pointer = fabric.util.transformPoint(this.getPointer(e, true), ivt);
       this.freeDrawingBrush.onMouseDown(pointer);
       this.fire('mouse:down', { e: e });
+
+      var target = this.findTarget(e);
+      if (typeof target !== 'undefined') {
+        target.fire('mousedown', { e: e, target: target });
+      }
     },
 
     /**
@@ -352,6 +369,11 @@
       }
       this.setCursor(this.freeDrawingCursor);
       this.fire('mouse:move', { e: e });
+
+      var target = this.findTarget(e);
+      if (typeof target !== 'undefined') {
+        target.fire('mousemove', { e: e, target: target });
+      }
     },
 
     /**
@@ -365,6 +387,11 @@
       }
       this.freeDrawingBrush.onMouseUp();
       this.fire('mouse:up', { e: e });
+
+      var target = this.findTarget(e);
+      if (typeof target !== 'undefined') {
+        target.fire('mouseup', { e: e, target: target });
+      }
     },
 
     /**
@@ -378,7 +405,7 @@
     __onMouseDown: function (e) {
 
       // accept only left clicks
-      var isLeftClick  = 'which' in e ? e.which === 1 : e.button === 1;
+      var isLeftClick  = 'which' in e ? e.which === 1 : e.button === 0;
       if (!isLeftClick && !fabric.isTouchSupported) {
         return;
       }
@@ -410,7 +437,7 @@
         target = this.getActiveGroup();
       }
 
-      if (target && target.selectable && !shouldGroup) {
+      if (target && target.selectable && (target.__corner || !shouldGroup)) {
         this._beforeTransform(e, target);
         this._setupCurrentTransform(e, target);
       }
@@ -425,12 +452,10 @@
      * @private
      */
     _beforeTransform: function(e, target) {
-      var corner;
-
       this.stateful && target.saveState();
 
       // determine if it's a drag or rotate case
-      if ((corner = target._findTargetCorner(this.getPointer(e)))) {
+      if (target._findTargetCorner(this.getPointer(e))) {
         this.onBeforeScaleRotate(target);
       }
 
@@ -500,20 +525,23 @@
     },
 
     /**
-      * Method that defines the actions when mouse is hovering the canvas.
-      * The currentTransform parameter will definde whether the user is rotating/scaling/translating
-      * an image or neither of them (only hovering). A group selection is also possible and would cancel
-      * all any other type of action.
-      * In case of an image transformation only the top canvas will be rendered.
-      * @private
-      * @param {Event} e Event object fired on mousemove
-      */
+     * Method that defines the actions when mouse is hovering the canvas.
+     * The currentTransform parameter will definde whether the user is rotating/scaling/translating
+     * an image or neither of them (only hovering). A group selection is also possible and would cancel
+     * all any other type of action.
+     * In case of an image transformation only the top canvas will be rendered.
+     * @private
+     * @param {Event} e Event object fired on mousemove
+     */
     __onMouseMove: function (e) {
 
       var target, pointer;
 
       if (this.isDrawingMode) {
         this._onMouseMoveInDrawingMode(e);
+        return;
+      }
+      if (typeof e.touches !== 'undefined' && e.touches.length > 1) {
         return;
       }
 
@@ -589,6 +617,14 @@
         this._scaleObject(x, y, 'y');
         this._fire('scaling', target, e);
       }
+      else if (action === 'skewX') {
+        this._skewObject(x, y, 'x');
+        this._fire('skewing', target, e);
+      }
+      else if (action === 'skewY') {
+        this._skewObject(x, y, 'y');
+        this._fire('skewing', target, e);
+      }
       else {
         this._translateObject(x, y);
         this._fire('moving', target, e);
@@ -609,14 +645,14 @@
      */
     _beforeScaleTransform: function(e, transform) {
       if (transform.action === 'scale' || transform.action === 'scaleX' || transform.action === 'scaleY') {
-        var centerTransform = this._shouldCenterTransform(e, transform.target);
+        var centerTransform = this._shouldCenterTransform(transform.target);
 
-           // Switch from a normal resize to center-based
+        // Switch from a normal resize to center-based
         if ((centerTransform && (transform.originX !== 'center' || transform.originY !== 'center')) ||
            // Switch from center-based resize to normal one
            (!centerTransform && transform.originX === 'center' && transform.originY === 'center')
         ) {
-          this._resetCurrentTransform(e);
+          this._resetCurrentTransform();
           transform.reset = true;
         }
       }
@@ -635,7 +671,7 @@
       else {
         // Switch from a normal resize to proportional
         if (!transform.reset && transform.currentAction === 'scale') {
-          this._resetCurrentTransform(e, transform.target);
+          this._resetCurrentTransform();
         }
 
         transform.currentAction = 'scaleEqually';
@@ -665,7 +701,7 @@
           this.setCursor(target.hoverCursor || this.hoverCursor);
         }
         else {
-          this._setCornerCursor(corner, target);
+          this._setCornerCursor(corner, target, e);
         }
       }
       return true;
@@ -674,9 +710,9 @@
     /**
      * @private
      */
-    _setCornerCursor: function(corner, target) {
+    _setCornerCursor: function(corner, target, e) {
       if (corner in cursorOffset) {
-        this.setCursor(this._getRotatedCornerCursor(corner, target));
+        this.setCursor(this._getRotatedCornerCursor(corner, target, e));
       }
       else if (corner === 'mtr' && target.hasRotatingPoint) {
         this.setCursor(this.rotationCursor);
@@ -690,13 +726,17 @@
     /**
      * @private
      */
-    _getRotatedCornerCursor: function(corner, target) {
+    _getRotatedCornerCursor: function(corner, target, e) {
       var n = Math.round((target.getAngle() % 360) / 45);
 
       if (n < 0) {
         n += 8; // full circle ahead
       }
       n += cursorOffset[corner];
+      if (e.shiftKey && cursorOffset[corner] % 2 === 0) {
+        //if we are holding shift and we are on a mx corner...
+        n += 2;
+      }
       // normalize n to be from 0 to 7
       n %= 8;
 

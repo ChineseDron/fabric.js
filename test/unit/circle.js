@@ -39,7 +39,7 @@
   });
 
   test('setRadius', function() {
-    var circle = new fabric.Circle({ radius: 10 });
+    var circle = new fabric.Circle({radius: 10, strokeWidth: 0});
 
     ok(typeof circle.setRadius == 'function');
 
@@ -49,7 +49,7 @@
     equal(circle.getWidth(), 20);
     equal(circle.getHeight(), 20);
 
-    circle.setRadius(20);
+    equal(circle, circle.setRadius(20));
 
     equal(circle.getRadiusX(), 20);
     equal(circle.getRadiusY(), 20);
@@ -59,7 +59,7 @@
   });
 
   test('set radius', function() {
-    var circle = new fabric.Circle();
+    var circle = new fabric.Circle({strokeWidth: 0});
 
     circle.set('radius', 20);
 
@@ -79,31 +79,38 @@
   test('toObject', function() {
     var circle = new fabric.Circle();
     var defaultProperties = {
-      'type':               'circle',
-      'originX':            'left',
-      'originY':            'top',
-      'left':               0,
-      'top':                0,
-      'width':              0,
-      'height':             0,
-      'fill':               'rgb(0,0,0)',
-      'stroke':             null,
-      'strokeWidth':        1,
-      'strokeDashArray':    null,
-      'strokeLineCap':      'butt',
-      'strokeLineJoin':     'miter',
-      'strokeMiterLimit':   10,
-      'scaleX':             1,
-      'scaleY':             1,
-      'angle':              0,
-      'flipX':              false,
-      'flipY':              false,
-      'opacity':            1,
-      'shadow':             null,
-      'visible':            true,
-      'backgroundColor':    '',
-      'clipTo':             null,
-      'radius':             0
+      'type':                     'circle',
+      'originX':                  'left',
+      'originY':                  'top',
+      'left':                     0,
+      'top':                      0,
+      'width':                    0,
+      'height':                   0,
+      'fill':                     'rgb(0,0,0)',
+      'stroke':                   null,
+      'strokeWidth':              1,
+      'strokeDashArray':          null,
+      'strokeLineCap':            'butt',
+      'strokeLineJoin':           'miter',
+      'strokeMiterLimit':         10,
+      'scaleX':                   1,
+      'scaleY':                   1,
+      'angle':                    0,
+      'flipX':                    false,
+      'flipY':                    false,
+      'opacity':                  1,
+      'shadow':                   null,
+      'visible':                  true,
+      'backgroundColor':          '',
+      'clipTo':                   null,
+      'fillRule':                 'nonzero',
+      'globalCompositeOperation': 'source-over',
+      'radius':                   0,
+      'startAngle':               0,
+      'endAngle':                 2 * Math.PI,
+      'skewX':                    0,
+      'skewY':                    0,
+      'transformMatrix':          null
     };
     ok(typeof circle.toObject == 'function');
     deepEqual(circle.toObject(), defaultProperties);
@@ -162,7 +169,7 @@
     equal(oCircle.get('strokeLineJoin'), strokeLineJoin);
     equal(oCircle.get('strokeMiterLimit'), strokeMiterLimit);
 
-    elFaultyCircle = fabric.document.createElement('circle');
+    var elFaultyCircle = fabric.document.createElement('circle');
     elFaultyCircle.setAttribute('r', '-10');
 
     var error;
@@ -213,7 +220,7 @@
   });
 
   test('cloning and radius, width, height', function() {
-    var circle = new fabric.Circle({ radius: 10 });
+    var circle = new fabric.Circle({ radius: 10, strokeWidth: 0});
     circle.scale(2);
 
     var clone = circle.clone();

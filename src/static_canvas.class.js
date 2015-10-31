@@ -134,6 +134,13 @@
     imageSmoothingEnabled: true,
 
     /**
+     * Indicates whether objects should remain in current stack position when selected. When false objects are brought to top and rendered as part of the selection group
+     * @type Boolean
+     * @default
+     */
+    preserveObjectStacking: false,
+
+    /**
      * The transformation (in the format of Canvas transform) which focuses the viewport
      * @type Array
      * @default
@@ -148,6 +155,11 @@
     },
 
     /**
+     * When true, canvas is scaled by devicePixelRatio for better rendering on retina screens
+     */
+    enableRetinaScaling: true,
+
+    /**
      * @private
      * @param {HTMLElement | String} el &lt;canvas> element to initialize instance on
      * @param {Object} [options] Options object
@@ -158,6 +170,11 @@
       this._createLowerCanvas(el);
       this._initOptions(options);
       this._setImageSmoothing();
+
+      // only initialize retina scaling once
+      if (!this.interactive) {
+        this._initRetinaScaling();
+      }
 
       if (options.overlayImage) {
         this.setOverlayImage(options.overlayImage, this.renderAll.bind(this));
@@ -172,6 +189,20 @@
         this.setOverlayColor(options.overlayColor, this.renderAll.bind(this));
       }
       this.calcOffset();
+    },
+
+    /**
+     * @private
+     */
+    _initRetinaScaling: function() {
+      if (fabric.devicePixelRatio === 1 || !this.enableRetinaScaling) {
+        return;
+      }
+
+      this.lowerCanvasEl.setAttribute('width', this.width * fabric.devicePixelRatio);
+      this.lowerCanvasEl.setAttribute('height', this.height * fabric.devicePixelRatio);
+
+      this.contextContainer.scale(fabric.devicePixelRatio, fabric.devicePixelRatio);
     },
 
     /**
@@ -221,6 +252,16 @@
      *   originX: 'left',
      *   originY: 'top'
      * });
+     * @example <caption>overlayImage loaded from cross-origin</caption>
+     * canvas.setOverlayImage('http://fabricjs.com/assets/jail_cell_bars.png', canvas.renderAll.bind(canvas), {
+     *   opacity: 0.5,
+     *   angle: 45,
+     *   left: 400,
+     *   top: 400,
+     *   originX: 'left',
+     *   originY: 'top',
+     *   crossOrigin: 'anonymous'
+     * });
      */
     setOverlayImage: function (image, callback, options) {
       return this.__setBgOverlayImage('overlayImage', image, callback, options);
@@ -261,6 +302,16 @@
      *   // Needed to position backgroundImage at 0/0
      *   originX: 'left',
      *   originY: 'top'
+     * });
+     * @example <caption>backgroundImage loaded from cross-origin</caption>
+     * canvas.setBackgroundImage('http://fabricjs.com/assets/honey_im_subtle.png', canvas.renderAll.bind(canvas), {
+     *   opacity: 0.5,
+     *   angle: 45,
+     *   left: 400,
+     *   top: 400,
+     *   originX: 'left',
+     *   originY: 'top',
+     *   crossOrigin: 'anonymous'
      * });
      */
     setBackgroundImage: function (image, callback, options) {
@@ -321,10 +372,13 @@
      * @private
      * @see {@link http://www.whatwg.org/specs/web-apps/current-work/multipage/the-canvas-element.html#dom-context-2d-imagesmoothingenabled|WhatWG Canvas Standard}
      */
-    _setImageSmoothing: function(){
+    _setImageSmoothing: function() {
       var ctx = this.getContext();
 
-      ctx.imageSmoothingEnabled       = this.imageSmoothingEnabled;
+      if (typeof ctx.imageSmoothingEnabled !== 'undefined') {
+        ctx.imageSmoothingEnabled = this.imageSmoothingEnabled;
+        return;
+      }
       ctx.webkitImageSmoothingEnabled = this.imageSmoothingEnabled;
       ctx.mozImageSmoothingEnabled    = this.imageSmoothingEnabled;
       ctx.msImageSmoothingEnabled     = this.imageSmoothingEnabled;
@@ -344,9 +398,10 @@
         fabric.util.loadImage(image, function(img) {
           this[property] = new fabric.Image(img, options);
           callback && callback();
-        }, this);
+        }, this, options && options.crossOrigin);
       }
       else {
+        options && image.setOptions(options);
         this[property] = image;
         callback && callback();
       }
@@ -523,11 +578,12 @@
         }
       }
 
+      this._setImageSmoothing();
+      this.calcOffset();
+
       if (!options.cssOnly) {
         this.renderAll();
       }
-
-      this.calcOffset();
 
       return this;
     },
@@ -593,10 +649,14 @@
      * @chainable true
      */
     setViewportTransform: function (vpt) {
+      var activeGroup = this.getActiveGroup();
       this.viewportTransform = vpt;
       this.renderAll();
       for (var i = 0, len = this._objects.length; i < len; i++) {
         this._objects[i].setCoords();
+      }
+      if (activeGroup) {
+        activeGroup.setCoords();
       }
       return this;
     },
@@ -689,33 +749,12 @@
     },
 
     /**
-     * Given a context, renders an object on that context
-     * @param {CanvasRenderingContext2D} ctx Context to render object on
-     * @param {fabric.Object} object Object to render
-     * @private
-     */
-    _draw: function (ctx, object) {
-      if (!object) {
-        return;
-      }
-
-      ctx.save();
-      var v = this.viewportTransform;
-      ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
-      object.render(ctx);
-      ctx.restore();
-      if (!this.controlsAboveOverlay) {
-        object._renderControls(ctx);
-      }
-    },
-
-    /**
      * @private
      * @param {fabric.Object} obj Object that was added
      */
     _onObjectAdded: function(obj) {
       this.stateful && obj.setupState();
-      obj.canvas = this;
+      obj._set('canvas', this);
       obj.setCoords();
       this.fire('object:added', { target: obj });
       obj.fire('added');
@@ -779,32 +818,64 @@
     },
 
     /**
+     * Divides objects in two groups, one to render immediately
+     * and one to render as activeGroup.
+     * return objects to render immediately and pushes the other in the activeGroup.
+     */
+    _chooseObjectsToRender: function() {
+      var activeGroup = this.getActiveGroup(),
+          object, objsToRender = [ ], activeGroupObjects = [ ];
+
+      if (activeGroup && !this.preserveObjectStacking) {
+        for (var i = 0, length = this._objects.length; i < length; i++) {
+          object = this._objects[i];
+          if (!activeGroup.contains(object)) {
+            objsToRender.push(object);
+          }
+          else {
+            activeGroupObjects.push(object);
+          }
+        }
+        activeGroup._set('_objects', activeGroupObjects);
+      }
+      else {
+        objsToRender = this._objects;
+      }
+      return objsToRender;
+    },
+
+    /**
      * Renders both the top canvas and the secondary container canvas.
      * @param {Boolean} [allOnTop] Whether we want to force all images to be rendered on the top canvas
      * @return {fabric.Canvas} instance
      * @chainable
      */
-    renderAll: function (allOnTop) {
-      var canvasToDrawOn = this[(allOnTop === true && this.interactive) ? 'contextTop' : 'contextContainer'],
-          activeGroup = this.getActiveGroup();
+    renderAll: function () {
+      var canvasToDrawOn = this.contextContainer, objsToRender;
 
       if (this.contextTop && this.selection && !this._groupSelector) {
         this.clearContext(this.contextTop);
       }
 
-      if (!allOnTop) {
-        this.clearContext(canvasToDrawOn);
-      }
+      this.clearContext(canvasToDrawOn);
 
       this.fire('before:render');
 
+      canvasToDrawOn.save();
       if (this.clipTo) {
         fabric.util.clipContext(this, canvasToDrawOn);
       }
 
+      objsToRender = this._chooseObjectsToRender();
+
+      //apply viewport transform once for all rendering process
+      canvasToDrawOn.transform.apply(canvasToDrawOn, this.viewportTransform);
       this._renderBackground(canvasToDrawOn);
-      this._renderObjects(canvasToDrawOn, activeGroup);
-      this._renderActiveGroup(canvasToDrawOn, activeGroup);
+      this._renderObjects(canvasToDrawOn, objsToRender);
+      this.preserveObjectStacking || this._renderObjects(canvasToDrawOn, [this.getActiveGroup()]);
+      if (!this.controlsAboveOverlay && this.interactive) {
+        this.drawControls(canvasToDrawOn);
+      }
 
       if (this.clipTo) {
         canvasToDrawOn.restore();
@@ -817,52 +888,42 @@
       }
 
       this.fire('after:render');
-
+      canvasToDrawOn.restore();
       return this;
     },
 
     /**
      * @private
      * @param {CanvasRenderingContext2D} ctx Context to render on
-     * @param {fabric.Group} activeGroup
+     * @param {Array} objects to render
      */
-    _renderObjects: function(ctx, activeGroup) {
-      var i, length;
-
-      // fast path
-      if (!activeGroup) {
-        for (i = 0, length = this._objects.length; i < length; ++i) {
-          this._draw(ctx, this._objects[i]);
-        }
-      }
-      else {
-        for (i = 0, length = this._objects.length; i < length; ++i) {
-          if (this._objects[i] && !activeGroup.contains(this._objects[i])) {
-            this._draw(ctx, this._objects[i]);
-          }
-        }
+    _renderObjects: function(ctx, objects) {
+      for (var i = 0, length = objects.length; i < length; ++i) {
+        objects[i] && objects[i].render(ctx);
       }
     },
 
     /**
      * @private
      * @param {CanvasRenderingContext2D} ctx Context to render on
-     * @param {fabric.Group} activeGroup
+     * @param {string} property 'background' or 'overlay'
      */
-    _renderActiveGroup: function(ctx, activeGroup) {
+    _renderBackgroundOrOverlay: function(ctx, property) {
+      var object = this[property + 'Color'];
+      if (object) {
+        ctx.fillStyle = object.toLive
+          ? object.toLive(ctx)
+          : object;
 
-      // delegate rendering to group selection (if one exists)
-      if (activeGroup) {
-
-        //Store objects in group preserving order, then replace
-        var sortedObjects = [];
-        this.forEachObject(function (object) {
-          if (activeGroup.contains(object)) {
-            sortedObjects.push(object);
-          }
-        });
-        activeGroup._set('objects', sortedObjects);
-        this._draw(ctx, activeGroup);
+        ctx.fillRect(
+          object.offsetX || 0,
+          object.offsetY || 0,
+          this.width,
+          this.height);
+      }
+      object = this[property + 'Image'];
+      if (object) {
+        object.render(ctx);
       }
     },
 
@@ -871,20 +932,7 @@
      * @param {CanvasRenderingContext2D} ctx Context to render on
      */
     _renderBackground: function(ctx) {
-      if (this.backgroundColor) {
-        ctx.fillStyle = this.backgroundColor.toLive
-          ? this.backgroundColor.toLive(ctx)
-          : this.backgroundColor;
-
-        ctx.fillRect(
-          this.backgroundColor.offsetX || 0,
-          this.backgroundColor.offsetY || 0,
-          this.width,
-          this.height);
-      }
-      if (this.backgroundImage) {
-        this._draw(ctx, this.backgroundImage);
-      }
+      this._renderBackgroundOrOverlay(ctx, 'background');
     },
 
     /**
@@ -892,20 +940,7 @@
      * @param {CanvasRenderingContext2D} ctx Context to render on
      */
     _renderOverlay: function(ctx) {
-      if (this.overlayColor) {
-        ctx.fillStyle = this.overlayColor.toLive
-          ? this.overlayColor.toLive(ctx)
-          : this.overlayColor;
-
-        ctx.fillRect(
-          this.overlayColor.offsetX || 0,
-          this.overlayColor.offsetY || 0,
-          this.width,
-          this.height);
-      }
-      if (this.overlayImage) {
-        this._draw(ctx, this.overlayImage);
-      }
+      this._renderBackgroundOrOverlay(ctx, 'overlay');
     },
 
     /**
@@ -922,15 +957,6 @@
       if (this.selection && this._groupSelector) {
         this._drawSelection();
       }
-
-      // delegate rendering to group selection if one exists
-      // used for drawing selection borders/controls
-      var activeGroup = this.getActiveGroup();
-      if (activeGroup) {
-        activeGroup.render(ctx);
-      }
-
-      this._renderOverlay(ctx);
 
       this.fire('after:render');
 
@@ -1033,11 +1059,6 @@
      */
     _toObjectMethod: function (methodName, propertiesToInclude) {
 
-      var activeGroup = this.getActiveGroup();
-      if (activeGroup) {
-        this.discardActiveGroup();
-      }
-
       var data = {
         objects: this._toObjects(methodName, propertiesToInclude)
       };
@@ -1045,20 +1066,6 @@
       extend(data, this.__serializeBgOverlay());
 
       fabric.util.populateWithProperties(this, data, propertiesToInclude);
-
-      if (activeGroup) {
-        this.setActiveGroup(new fabric.Group(activeGroup.getObjects(), {
-          originX: 'center',
-          originY: 'center'
-        }));
-        activeGroup.forEachObject(function(o) {
-          o.set('active', true);
-        });
-
-        if (this._currentTransform) {
-          this._currentTransform.target = this.getActiveGroup();
-        }
-      }
 
       return data;
     },
@@ -1082,11 +1089,55 @@
         originalValue = instance.includeDefaultValues;
         instance.includeDefaultValues = false;
       }
-      var object = instance[methodName](propertiesToInclude);
+
+      //If the object is part of the current selection group, it should
+      //be transformed appropriately
+      //i.e. it should be serialised as it would appear if the selection group
+      //were to be destroyed.
+      var originalProperties = this._realizeGroupTransformOnObject(instance),
+          object = instance[methodName](propertiesToInclude);
       if (!this.includeDefaultValues) {
         instance.includeDefaultValues = originalValue;
       }
+
+      //Undo the damage we did by changing all of its properties
+      this._unwindGroupTransformOnObject(instance, originalProperties);
+
       return object;
+    },
+
+    /**
+     * Realises an object's group transformation on it
+     * @private
+     * @param {fabric.Object} [instance] the object to transform (gets mutated)
+     * @returns the original values of instance which were changed
+     */
+    _realizeGroupTransformOnObject: function(instance) {
+      var layoutProps = ['angle', 'flipX', 'flipY', 'height', 'left', 'scaleX', 'scaleY', 'top', 'width'];
+      if (instance.group && instance.group === this.getActiveGroup()) {
+        //Copy all the positionally relevant properties across now
+        var originalValues = {};
+        layoutProps.forEach(function(prop) {
+          originalValues[prop] = instance[prop];
+        });
+        this.getActiveGroup().realizeTransform(instance);
+        return originalValues;
+      }
+      else {
+        return null;
+      }
+    },
+
+    /**
+     * Restores the changed properties of instance
+     * @private
+     * @param {fabric.Object} [instance] the object to un-transform (gets mutated)
+     * @param {Object} [originalValues] the original values of instance, as returned by _realizeGroupTransformOnObject
+     */
+    _unwindGroupTransformOnObject: function(instance, originalValues) {
+      if (originalValues) {
+        instance.set(originalValues);
+      }
     },
 
     /**
@@ -1115,6 +1166,14 @@
     },
 
     /* _TO_SVG_START_ */
+    /**
+     * When true, getSvgTransform() will apply the StaticCanvas.viewportTransform to the SVG transformation. When true,
+     * a zoomed canvas will then produce zoomed SVG output.
+     * @type Boolean
+     * @default
+     */
+    svgViewportTransformation: true,
+
     /**
      * Returns SVG representation of canvas
      * @function
@@ -1177,7 +1236,7 @@
     _setSVGPreamble: function(markup, options) {
       if (!options.suppressPreamble) {
         markup.push(
-          '<?xml version="1.0" encoding="', (options.encoding || 'UTF-8'), '" standalone="no" ?>',
+          '<?xml version="1.0" encoding="', (options.encoding || 'UTF-8'), '" standalone="no" ?>\n',
             '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ',
               '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
         );
@@ -1188,13 +1247,29 @@
      * @private
      */
     _setSVGHeader: function(markup, options) {
+      var width, height, vpt;
+
+      if (options.viewBox) {
+        width = options.viewBox.width;
+        height = options.viewBox.height;
+      }
+      else {
+        width = this.width;
+        height = this.height;
+        if (!this.svgViewportTransformation) {
+          vpt = this.viewportTransform;
+          width /= vpt[0];
+          height /= vpt[3];
+        }
+      }
+
       markup.push(
         '<svg ',
           'xmlns="http://www.w3.org/2000/svg" ',
           'xmlns:xlink="http://www.w3.org/1999/xlink" ',
           'version="1.1" ',
-          'width="', (options.viewBox ? options.viewBox.width : this.width), '" ',
-          'height="', (options.viewBox ? options.viewBox.height : this.height), '" ',
+          'width="', width, '" ',
+          'height="', height, '" ',
           (this.backgroundColor && !this.backgroundColor.toLive
             ? 'style="background-color: ' + this.backgroundColor + '" '
             : null),
@@ -1205,12 +1280,12 @@
                 options.viewBox.width + ' ' +
                 options.viewBox.height + '" '
               : null),
-          'xml:space="preserve">',
-        '<desc>Created with Fabric.js ', fabric.version, '</desc>',
+          'xml:space="preserve">\n',
+        '<desc>Created with Fabric.js ', fabric.version, '</desc>\n',
         '<defs>',
           fabric.createSVGFontFacesMarkup(this.getObjects()),
           fabric.createSVGRefElementsMarkup(this),
-        '</defs>'
+        '</defs>\n'
       );
     },
 
@@ -1218,18 +1293,13 @@
      * @private
      */
     _setSVGObjects: function(markup, reviver) {
-      var activeGroup = this.getActiveGroup();
-      if (activeGroup) {
-        this.discardActiveGroup();
-      }
       for (var i = 0, objects = this.getObjects(), len = objects.length; i < len; i++) {
-        markup.push(objects[i].toSVG(reviver));
-      }
-      if (activeGroup) {
-        this.setActiveGroup(new fabric.Group(activeGroup.getObjects()));
-        activeGroup.forEachObject(function(o) {
-          o.set('active', true);
-        });
+        var instance = objects[i],
+            //If the object is in a selection group, simulate what would happen to that
+            //object when the group is deselected
+            originalProperties = this._realizeGroupTransformOnObject(instance);
+        markup.push(instance.toSVG(reviver));
+        this._unwindGroupTransformOnObject(instance, originalProperties);
       }
     },
 
@@ -1258,7 +1328,7 @@
                 ? this[property].source.height
                 : this.height),
             '" fill="url(#' + property + 'Pattern)"',
-          '></rect>'
+          '></rect>\n'
         );
       }
       else if (this[property] && property === 'overlayColor') {
@@ -1267,7 +1337,7 @@
             'width="', this.width,
             '" height="', this.height,
             '" fill="', this[property], '"',
-          '></rect>'
+          '></rect>\n'
         );
       }
     },

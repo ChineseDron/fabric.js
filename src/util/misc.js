@@ -2,6 +2,9 @@
 
   var sqrt = Math.sqrt,
       atan2 = Math.atan2,
+      atan = Math.atan,
+      pow = Math.pow,
+      abs = Math.abs,
       PiBy180 = Math.PI / 180;
 
   /**
@@ -70,14 +73,11 @@
      * @return {fabric.Point} The new rotated point
      */
     rotatePoint: function(point, origin, radians) {
-      var sin = Math.sin(radians),
-          cos = Math.cos(radians);
-
       point.subtractEquals(origin);
-
-      var rx = point.x * cos - point.y * sin,
+      var sin = Math.sin(radians),
+          cos = Math.cos(radians),
+          rx = point.x * cos - point.y * sin,
           ry = point.x * sin + point.y * cos;
-
       return new fabric.Point(rx, ry).addEquals(origin);
     },
 
@@ -93,14 +93,37 @@
     transformPoint: function(p, t, ignoreOffset) {
       if (ignoreOffset) {
         return new fabric.Point(
-          t[0] * p.x + t[1] * p.y,
-          t[2] * p.x + t[3] * p.y
+          t[0] * p.x + t[2] * p.y,
+          t[1] * p.x + t[3] * p.y
         );
       }
       return new fabric.Point(
-        t[0] * p.x + t[1] * p.y + t[4],
-        t[2] * p.x + t[3] * p.y + t[5]
+        t[0] * p.x + t[2] * p.y + t[4],
+        t[1] * p.x + t[3] * p.y + t[5]
       );
+    },
+
+    /**
+     * Returns coordinates of points's bounding rectangle (left, top, width, height)
+     * @param {Array} points 4 points array
+     * @return {Object} Object with left, top, width, height properties
+     */
+    makeBoundingBoxFromPoints: function(points) {
+      var xPoints = [points[0].x, points[1].x, points[2].x, points[3].x],
+          minX = fabric.util.array.min(xPoints),
+          maxX = fabric.util.array.max(xPoints),
+          width = Math.abs(minX - maxX),
+          yPoints = [points[0].y, points[1].y, points[2].y, points[3].y],
+          minY = fabric.util.array.min(yPoints),
+          maxY = fabric.util.array.max(yPoints),
+          height = Math.abs(minY - maxY);
+
+      return {
+        left: minX,
+        top: minY,
+        width: width,
+        height: height
+      };
     },
 
     /**
@@ -111,10 +134,9 @@
      * @return {Array} The inverted transform
      */
     invertTransform: function(t) {
-      var r = t.slice(),
-          a = 1 / (t[0] * t[3] - t[1] * t[2]);
-      r = [a * t[3], -a * t[1], -a * t[2], a * t[0], 0, 0];
-      var o = fabric.util.transformPoint({ x: t[4], y: t[5] }, r);
+      var a = 1 / (t[0] * t[3] - t[1] * t[2]),
+          r = [a * t[3], -a * t[1], -a * t[2], a * t[0]],
+          o = fabric.util.transformPoint({ x: t[4], y: t[5] }, r, true);
       r[4] = -o.x;
       r[5] = -o.y;
       return r;
@@ -138,10 +160,12 @@
      * @param {Number|String} value number to operate on
      * @return {Number|String}
      */
-    parseUnit: function(value) {
+    parseUnit: function(value, fontSize) {
       var unit = /\D{0,2}$/.exec(value),
           number = parseFloat(value);
-
+      if (!fontSize) {
+        fontSize = fabric.Text.DEFAULT_SVG_FONT_SIZE;
+      }
       switch (unit[0]) {
         case 'mm':
           return number * fabric.DPI / 25.4;
@@ -157,6 +181,9 @@
 
         case 'pc':
           return number * fabric.DPI / 72 * 12; // or * 16
+
+        case 'em':
+          return number * fontSize;
 
         default:
           return number;
@@ -174,12 +201,12 @@
     },
 
     /**
-      * Returns klass "Class" object of given namespace
-      * @memberOf fabric.util
-      * @param {String} type Type of object (eg. 'circle')
-      * @param {String} namespace Namespace to get klass "Class" object from
-      * @return {Object} klass "Class"
-      */
+     * Returns klass "Class" object of given namespace
+     * @memberOf fabric.util
+     * @param {String} type Type of object (eg. 'circle')
+     * @param {String} namespace Namespace to get klass "Class" object from
+     * @return {Object} klass "Class"
+     */
     getKlass: function(type, namespace) {
       // capitalize first letter only
       type = fabric.util.string.camelize(type.charAt(0).toUpperCase() + type.slice(1));
@@ -454,46 +481,64 @@
      * Multiply matrix A by matrix B to nest transformations
      * @static
      * @memberOf fabric.util
-     * @param  {Array} matrixA First transformMatrix
-     * @param  {Array} matrixB Second transformMatrix
+     * @param  {Array} a First transformMatrix
+     * @param  {Array} b Second transformMatrix
+     * @param  {Boolean} is2x2 flag to multiply matrices as 2x2 matrices
      * @return {Array} The product of the two transform matrices
      */
-    multiplyTransformMatrices: function(matrixA, matrixB) {
-      // Matrix multiply matrixA * matrixB
-      var a = [
-        [matrixA[0], matrixA[2], matrixA[4]],
-        [matrixA[1], matrixA[3], matrixA[5]],
-        [0,          0,          1         ]
-      ],
-
-      b = [
-        [matrixB[0], matrixB[2], matrixB[4]],
-        [matrixB[1], matrixB[3], matrixB[5]],
-        [0,          0,          1         ]
-      ],
-
-      result = [];
-
-      for (var r = 0; r < 3; r++) {
-        result[r] = [];
-        for (var c = 0; c < 3; c++) {
-          var sum = 0;
-          for (var k = 0; k < 3; k++) {
-            sum += a[r][k] * b[k][c];
-          }
-
-          result[r][c] = sum;
-        }
-      }
-
+    multiplyTransformMatrices: function(a, b, is2x2) {
+      // Matrix multiply a * b
       return [
-        result[0][0],
-        result[1][0],
-        result[0][1],
-        result[1][1],
-        result[0][2],
-        result[1][2]
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        is2x2 ? 0 : a[0] * b[4] + a[2] * b[5] + a[4],
+        is2x2 ? 0 : a[1] * b[4] + a[3] * b[5] + a[5]
       ];
+    },
+
+    /**
+     * Decomposes standard 2x2 matrix into transform componentes
+     * @static
+     * @memberOf fabric.util
+     * @param  {Array} a transformMatrix
+     * @return {Object} Components of transform
+     */
+    qrDecompose: function(a) {
+      var angle = atan(a[1] / a[0]) / PiBy180,
+          denom = pow(a[0], 2) + pow(a[1], 2),
+          scaleX = sqrt(denom),
+          scaleY = (a[0] * a[3] - a[2] * a [1]) / scaleX,
+          skewX = atan((a[0] * a[2] + a[1] * a [3]) / denom);
+      if (a[0] < 0) {
+        angle += 180;
+      }
+      return {
+        angle: angle,
+        scaleX: scaleX,
+        scaleY: scaleY,
+        skewX: skewX / PiBy180,
+        skewY: 0,
+        translateX: a[4],
+        translateY: a[5]
+      };
+    },
+
+    customTransformMatrix: function(scaleX, scaleY, skewX) {
+      var skewMatrixX = [1, 0, abs(Math.tan(skewX * PiBy180)), 1],
+          scaleMatrix = [abs(scaleX), 0, 0, abs(scaleY)];
+      return fabric.util.multiplyTransformMatrices(scaleMatrix, skewMatrixX, true);
+    },
+
+    resetObjectTransform: function (target) {
+      target.scaleX = 1;
+      target.scaleY = 1;
+      target.skewX = 0;
+      target.skewY = 0;
+      target.flipX = false;
+      target.flipY = false;
+      target.setAngle(0);
     },
 
     /**
@@ -547,6 +592,35 @@
       imageData = null;
 
       return _isTransparent;
+    },
+
+    /**
+     * Parse preserveAspectRatio attribute from element
+     * @param {string} attribute to be parsed
+     * @return {Object} an object containing align and meetOrSlice attribute
+     */
+    parsePreserveAspectRatioAttribute: function(attribute) {
+      var meetOrSlice = 'meet', alignX = 'Mid', alignY = 'Mid',
+          aspectRatioAttrs = attribute.split(' '), align;
+
+      if (aspectRatioAttrs && aspectRatioAttrs.length) {
+        meetOrSlice = aspectRatioAttrs.pop();
+        if (meetOrSlice !== 'meet' && meetOrSlice !== 'slice') {
+          align = meetOrSlice;
+          meetOrSlice = 'meet';
+        }
+        else if (aspectRatioAttrs.length) {
+          align = aspectRatioAttrs.pop();
+        }
+      }
+      //divide align in alignX and alignY
+      alignX = align !== 'none' ? align.slice(1, 4) : 'none';
+      alignY = align !== 'none' ? align.slice(5, 8) : 'none';
+      return {
+        meetOrSlice: meetOrSlice,
+        alignX: alignX,
+        alignY: alignY
+      };
     }
   };
 

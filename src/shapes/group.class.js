@@ -1,4 +1,4 @@
-(function(global){
+(function(global) {
 
   'use strict';
 
@@ -42,13 +42,28 @@
     type: 'group',
 
     /**
+     * Width of stroke
+     * @type Number
+     * @default
+     */
+    strokeWidth: 0,
+
+    /**
      * Constructor
      * @param {Object} objects Group objects
      * @param {Object} [options] Options object
+     * @param {Boolean} [isAlreadyGrouped] if true, objects have been grouped already.
      * @return {Object} thisArg
      */
-    initialize: function(objects, options) {
+    initialize: function(objects, options, isAlreadyGrouped) {
       options = options || { };
+
+      this._objects = [];
+      // if objects enclosed in a group have been grouped already,
+      // we cannot change properties of objects.
+      // Thus we need to set options to group without objects,
+      // because delegatedProperties propagate to objects.
+      isAlreadyGrouped && this.callSuper('initialize', options);
 
       this._objects = objects || [];
       for (var i = this._objects.length; i--; ) {
@@ -56,15 +71,24 @@
       }
 
       this.originalState = { };
-      this.callSuper('initialize');
 
-      this._calcBounds();
-      this._updateObjectsCoords();
-
-      if (options) {
-        extend(this, options);
+      if (options.originX) {
+        this.originX = options.originX;
       }
-      this._setOpacityIfSame();
+      if (options.originY) {
+        this.originY = options.originY;
+      }
+
+      if (isAlreadyGrouped) {
+        // do not change coordinate of objects enclosed in a group,
+        // because objects coordinate system have been group coodinate system already.
+        this._updateObjectsCoords(true);
+      }
+      else {
+        this._calcBounds();
+        this._updateObjectsCoords();
+        this.callSuper('initialize', options);
+      }
 
       this.setCoords();
       this.saveCoords();
@@ -72,30 +96,39 @@
 
     /**
      * @private
+     * @param {Boolean} [skipCoordsChange] if true, coordinates of objects enclosed in a group do not change
      */
-    _updateObjectsCoords: function() {
-      this.forEachObject(this._updateObjectCoords, this);
+    _updateObjectsCoords: function(skipCoordsChange) {
+      for (var i = this._objects.length; i--; ){
+        this._updateObjectCoords(this._objects[i], skipCoordsChange);
+      }
     },
 
     /**
      * @private
+     * @param {Object} object
+     * @param {Boolean} [skipCoordsChange] if true, coordinates of object dose not change
      */
-    _updateObjectCoords: function(object) {
+    _updateObjectCoords: function(object, skipCoordsChange) {
+      // do not display corners of objects enclosed in a group
+      object.__origHasControls = object.hasControls;
+      object.hasControls = false;
+
+      if (skipCoordsChange) {
+        return;
+      }
+
       var objectLeft = object.getLeft(),
-          objectTop = object.getTop();
+          objectTop = object.getTop(),
+          center = this.getCenterPoint();
 
       object.set({
         originalLeft: objectLeft,
         originalTop: objectTop,
-        left: objectLeft - this.left,
-        top: objectTop - this.top
+        left: objectLeft - center.x,
+        top: objectTop - center.y
       });
-
       object.setCoords();
-
-      // do not display corners of objects enclosed in a group
-      object.__origHasControls = object.hasControls;
-      object.hasControls = false;
     },
 
     /**
@@ -114,9 +147,11 @@
      */
     addWithUpdate: function(object) {
       this._restoreObjectsState();
+      fabric.util.resetObjectTransform(this);
       if (object) {
         this._objects.push(object);
         object.group = this;
+        object._set('canvas', this.canvas);
       }
       // since _restoreObjectsState set objects inactive
       this.forEachObject(this._setObjectActive, this);
@@ -140,9 +175,8 @@
      * @chainable
      */
     removeWithUpdate: function(object) {
-      this._moveFlippedObject(object);
       this._restoreObjectsState();
-
+      fabric.util.resetObjectTransform(this);
       // since _restoreObjectsState set objects inactive
       this.forEachObject(this._setObjectActive, this);
 
@@ -158,6 +192,7 @@
      */
     _onObjectAdded: function(object) {
       object.group = this;
+      object._set('canvas', this.canvas);
     },
 
     /**
@@ -189,16 +224,20 @@
      * @private
      */
     _set: function(key, value) {
-      if (key in this.delegatedProperties) {
-        var i = this._objects.length;
-        this[key] = value;
+      var i = this._objects.length;
+
+      if (this.delegatedProperties[key] || key === 'canvas') {
         while (i--) {
           this._objects[i].set(key, value);
         }
       }
       else {
-        this[key] = value;
+        while (i--) {
+          this._objects[i].setOnGroup(key, value);
+        }
       }
+
+      this.callSuper('_set', key, value);
     },
 
     /**
@@ -223,8 +262,12 @@
       }
 
       ctx.save();
+      if (this.transformMatrix) {
+        ctx.transform.apply(ctx, this.transformMatrix);
+      }
+      this.transform(ctx);
+      this._setShadow(ctx);
       this.clipTo && fabric.util.clipContext(this, ctx);
-
       // the array is now sorted in order of highest first, so start from end
       for (var i = 0, len = this._objects.length; i < len; i++) {
         this._renderObject(this._objects[i], ctx);
@@ -251,17 +294,14 @@
      * @private
      */
     _renderObject: function(object, ctx) {
-      var originalHasRotatingPoint = object.hasRotatingPoint;
-
       // do not render if object is not visible
       if (!object.visible) {
         return;
       }
 
+      var originalHasRotatingPoint = object.hasRotatingPoint;
       object.hasRotatingPoint = false;
-
       object.render(ctx);
-
       object.hasRotatingPoint = originalHasRotatingPoint;
     },
 
@@ -277,51 +317,26 @@
     },
 
     /**
-     * Moves a flipped object to the position where it's displayed
-     * @private
+     * Realises the transform from this group onto the supplied object
+     * i.e. it tells you what would happen if the supplied object was in
+     * the group, and then the group was destroyed. It mutates the supplied
+     * object.
      * @param {fabric.Object} object
-     * @return {fabric.Group} thisArg
+     * @return {fabric.Object} transformedObject
      */
-    _moveFlippedObject: function(object) {
-      var oldOriginX = object.get('originX'),
-          oldOriginY = object.get('originY'),
-          center = object.getCenterPoint();
-
-      object.set({
-        originX: 'center',
-        originY: 'center',
-        left: center.x,
-        top: center.y
-      });
-
-      this._toggleFlipping(object);
-
-      var newOrigin = object.getPointByOrigin(oldOriginX, oldOriginY);
-
-      object.set({
-        originX: oldOriginX,
-        originY: oldOriginY,
-        left: newOrigin.x,
-        top: newOrigin.y
-      });
-
-      return this;
-    },
-
-    /**
-     * @private
-     */
-    _toggleFlipping: function(object) {
-      if (this.flipX) {
-        object.toggle('flipX');
-        object.set('left', -object.get('left'));
-        object.setAngle(-object.getAngle());
-      }
-      if (this.flipY) {
-        object.toggle('flipY');
-        object.set('top', -object.get('top'));
-        object.setAngle(-object.getAngle());
-      }
+    realizeTransform: function(object) {
+      var matrix = object.calcTransformMatrix(),
+          options = fabric.util.qrDecompose(matrix),
+          center = new fabric.Point(options.translateX, options.translateY);
+      object.scaleX = options.scaleX;
+      object.scaleY = options.scaleY;
+      object.skewX = options.skewX;
+      object.skewY = options.skewY;
+      object.angle = options.angle;
+      object.flipX = false;
+      object.flipY = false;
+      object.setPositionByOrigin(center, 'center', 'center');
+      return object;
     },
 
     /**
@@ -331,47 +346,14 @@
      * @return {fabric.Group} thisArg
      */
     _restoreObjectState: function(object) {
-      this._setObjectPosition(object);
-
+      this.realizeTransform(object);
       object.setCoords();
       object.hasControls = object.__origHasControls;
       delete object.__origHasControls;
       object.set('active', false);
-      object.setCoords();
       delete object.group;
 
       return this;
-    },
-
-    /**
-     * @private
-     */
-    _setObjectPosition: function(object) {
-      var groupLeft = this.getLeft(),
-          groupTop = this.getTop(),
-          rotated = this._getRotatedLeftTop(object);
-
-      object.set({
-        angle: object.getAngle() + this.getAngle(),
-        left: groupLeft + rotated.left,
-        top: groupTop + rotated.top,
-        scaleX: object.get('scaleX') * this.get('scaleX'),
-        scaleY: object.get('scaleY') * this.get('scaleY')
-      });
-    },
-
-    /**
-     * @private
-     */
-    _getRotatedLeftTop: function(object) {
-      var groupAngle = this.getAngle() * (Math.PI / 180);
-      return {
-        left: (-Math.sin(groupAngle) * object.getTop() * this.get('scaleY') +
-                Math.cos(groupAngle) * object.getLeft() * this.get('scaleX')),
-
-        top:  (Math.cos(groupAngle) * object.getTop() * this.get('scaleY') +
-               Math.sin(groupAngle) * object.getLeft() * this.get('scaleX'))
-      };
     },
 
     /**
@@ -380,7 +362,6 @@
      * @chainable
      */
     destroy: function() {
-      this._objects.forEach(this._moveFlippedObject, this);
       return this._restoreObjectsState();
     },
 
@@ -420,30 +401,19 @@
     /**
      * @private
      */
-    _setOpacityIfSame: function() {
-      var objects = this.getObjects(),
-          firstValue = objects[0] ? objects[0].get('opacity') : 1,
-          isSameOpacity = objects.every(function(o) {
-            return o.get('opacity') === firstValue;
-          });
-
-      if (isSameOpacity) {
-        this.opacity = firstValue;
-      }
-    },
-
-    /**
-     * @private
-     */
     _calcBounds: function(onlyWidthHeight) {
       var aX = [],
           aY = [],
-          o;
+          o, prop,
+          props = ['tr', 'br', 'bl', 'tl'],
+          i = 0, iLen = this._objects.length,
+          j, jLen = props.length;
 
-      for (var i = 0, len = this._objects.length; i < len; ++i) {
+      for ( ; i < iLen; ++i) {
         o = this._objects[i];
         o.setCoords();
-        for (var prop in o.oCoords) {
+        for (j = 0; j < jLen; j++) {
+          prop = props[j];
           aX.push(o.oCoords[prop].x);
           aY.push(o.oCoords[prop].y);
         }
@@ -465,8 +435,20 @@
           };
 
       if (!onlyWidthHeight) {
-        obj.left = (minXY.x + maxXY.x) / 2 || 0;
-        obj.top = (minXY.y + maxXY.y) / 2 || 0;
+        obj.left = minXY.x || 0;
+        obj.top = minXY.y || 0;
+        if (this.originX === 'center') {
+          obj.left += obj.width / 2;
+        }
+        if (this.originX === 'right') {
+          obj.left += obj.width;
+        }
+        if (this.originY === 'center') {
+          obj.top += obj.height / 2;
+        }
+        if (this.originY === 'bottom') {
+          obj.top += obj.height;
+        }
       }
       return obj;
     },
@@ -478,16 +460,19 @@
      * @return {String} svg representation of an instance
      */
     toSVG: function(reviver) {
-      var markup = [
-        //jscs:disable validateIndentation
-        '<g ',
-          'transform="', this.getSvgTransform(),
+      var markup = this._createBaseSVGMarkup();
+      markup.push(
+        '<g transform="',
+        /* avoiding styles intentionally */
+        this.getSvgTransform(),
+        this.getSvgTransformMatrix(),
+        '" style="',
+        this.getSvgFilter(),
         '">\n'
-        //jscs:enable validateIndentation
-      ];
+      );
 
       for (var i = 0, len = this._objects.length; i < len; i++) {
-        markup.push(this._objects[i].toSVG(reviver));
+        markup.push('\t', this._objects[i].toSVG(reviver));
       }
 
       markup.push('</g>\n');
@@ -535,7 +520,7 @@
   fabric.Group.fromObject = function(object, callback) {
     fabric.util.enlivenObjects(object.objects, function(enlivenedObjects) {
       delete object.objects;
-      callback && callback(new fabric.Group(enlivenedObjects, object));
+      callback && callback(new fabric.Group(enlivenedObjects, object, true));
     });
   };
 

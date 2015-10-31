@@ -1,34 +1,39 @@
 (function(){
 
   var LINE_OBJECT = {
-    'type':               'line',
-    'originX':            'left',
-    'originY':            'top',
-    'left':               11,
-    'top':                12,
-    'width':              2,
-    'height':             2,
-    'fill':               'rgb(0,0,0)',
-    'stroke':             null,
-    'strokeWidth':        1,
-    'strokeDashArray':    null,
-    'strokeLineCap':      'butt',
-    'strokeLineJoin':     'miter',
-    'strokeMiterLimit':   10,
-    'scaleX':             1,
-    'scaleY':             1,
-    'angle':              0,
-    'flipX':              false,
-    'flipY':              false,
-    'opacity':            1,
-    'x1':                 11,
-    'y1':                 12,
-    'x2':                 13,
-    'y2':                 14,
-    'shadow':             null,
-    'visible':            true,
-    'clipTo':             null,
-    'backgroundColor':    ''
+    'type':                     'line',
+    'originX':                  'left',
+    'originY':                  'top',
+    'left':                     11,
+    'top':                      12,
+    'width':                    2,
+    'height':                   2,
+    'fill':                     'rgb(0,0,0)',
+    'stroke':                   null,
+    'strokeWidth':              1,
+    'strokeDashArray':          null,
+    'strokeLineCap':            'butt',
+    'strokeLineJoin':           'miter',
+    'strokeMiterLimit':         10,
+    'scaleX':                   1,
+    'scaleY':                   1,
+    'angle':                    0,
+    'flipX':                    false,
+    'flipY':                    false,
+    'opacity':                  1,
+    'x1':                       -1,
+    'y1':                       -1,
+    'x2':                       1,
+    'y2':                       1,
+    'shadow':                   null,
+    'visible':                  true,
+    'clipTo':                   null,
+    'backgroundColor':          '',
+    'fillRule':                 'nonzero',
+    'globalCompositeOperation': 'source-over',
+    'skewX':                    0,
+    'skewY':                    0,
+    'transformMatrix':          null
   };
 
   QUnit.module('fabric.Line');
@@ -123,12 +128,12 @@
     equal(oLine.get('y2'), 0, 'missing attributes count as 0 values');
   });
 
-  test('straight lines should be displayed', function() {
+  test('straight lines may have 0 width or heigth', function() {
     var line1 = new fabric.Line([10,10,100,10]),
         line2 = new fabric.Line([10,10,10,100]);
 
-    equal(line1.get('height'), 1);
-    equal(line2.get('width'), 1);
+    equal(line1.get('height'), 0);
+    equal(line2.get('width'), 0);
   });
 
   test('changing x/y coords should update width/height', function() {
@@ -143,12 +148,7 @@
   });
 
   test('stroke-width in a style', function() {
-    var lineEl = fabric.document.createElement('line'),
-        x1 = 0,
-        y1 = 0,
-        x2 = 10,
-        y2 = 10;
-
+    var lineEl = fabric.document.createElement('line');
     lineEl.setAttribute('style', 'stroke-width:4');
 
     var oLine = fabric.Line.fromElement(lineEl);

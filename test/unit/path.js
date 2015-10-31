@@ -1,32 +1,37 @@
 (function() {
 
   var REFERENCE_PATH_OBJECT = {
-    'type':               'path',
-    'originX':            'left',
-    'originY':            'top',
-    'left':               200,
-    'top':                200,
-    'width':              200,
-    'height':             200,
-    'fill':               'red',
-    'stroke':             'blue',
-    'strokeWidth':        1,
-    'strokeDashArray':    null,
-    'strokeLineCap':      'butt',
-    'strokeLineJoin':     'miter',
-    'strokeMiterLimit':   10,
-    'scaleX':             1,
-    'scaleY':             1,
-    'angle':              0,
-    'flipX':              false,
-    'flipY':              false,
-    'opacity':            1,
-    'path':               [['M', 100, 100], ['L', 300, 100], ['L', 200, 300], ['z']],
-    'pathOffset':         { x: 100, y: 100 },
-    'shadow':             null,
-    'visible':            true,
-    'backgroundColor':    '',
-    'clipTo':             null
+    'type':                     'path',
+    'originX':                  'left',
+    'originY':                  'top',
+    'left':                     100,
+    'top':                      100,
+    'width':                    200,
+    'height':                   200,
+    'fill':                     'red',
+    'stroke':                   'blue',
+    'strokeWidth':              1,
+    'strokeDashArray':          null,
+    'strokeLineCap':            'butt',
+    'strokeLineJoin':           'miter',
+    'strokeMiterLimit':         10,
+    'scaleX':                   1,
+    'scaleY':                   1,
+    'angle':                    0,
+    'flipX':                    false,
+    'flipY':                    false,
+    'opacity':                  1,
+    'path':                     [['M', 100, 100], ['L', 300, 100], ['L', 200, 300], ['z']],
+    'pathOffset':               { x: 200, y: 200 },
+    'shadow':                   null,
+    'visible':                  true,
+    'backgroundColor':          '',
+    'clipTo':                   null,
+    'fillRule':                 'nonzero',
+    'globalCompositeOperation': 'source-over',
+    'skewX':                    0,
+    'skewY':                    0,
+    'transformMatrix':          null
   };
 
   function getPathElement(path) {
@@ -68,15 +73,23 @@
         error = err;
       }
 
-      ok(error, 'should throw error');
+      ok(typeof error === 'undefined', 'should not throw error on empty path');
       start();
     });
+  });
+
+  asyncTest('initialize', function() {
+    var path = new fabric.Path('M 100 100 L 200 100 L 170 200 z', { top: 0 });
+
+    equal(path.left, 100);
+    equal(path.top, 0);
+    start();
   });
 
   asyncTest('toString', function() {
     makePathObject(function(path) {
       ok(typeof path.toString == 'function');
-      equal(path.toString(), '#<fabric.Path (4): { "top": 200, "left": 200 }>');
+      equal(path.toString(), '#<fabric.Path (4): { "top": 100, "left": 100 }>');
       start();
     });
   });
@@ -85,6 +98,14 @@
     makePathObject(function(path) {
       ok(typeof path.toObject == 'function');
       deepEqual(path.toObject(), REFERENCE_PATH_OBJECT);
+      start();
+    });
+  });
+
+  asyncTest('toSVG', function() {
+    makePathObject(function(path) {
+      ok(typeof path.toObject == 'function');
+      deepEqual(path.toSVG(), '<path d="M 100 100 L 300 100 L 200 300 z" style="stroke: blue; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: red; fill-rule: nonzero; opacity: 1;" transform="translate(200.5 200.5) translate(-200, -200) " stroke-linecap="round" />\n');
       start();
     });
   });

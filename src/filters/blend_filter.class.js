@@ -1,4 +1,4 @@
-(function(global){
+(function(global) {
   'use strict';
 
   var fabric = global.fabric;
@@ -26,7 +26,7 @@
   fabric.Image.filters.Blend = fabric.util.createClass({
     type: 'Blend',
 
-    initialize: function(options){
+    initialize: function(options) {
       options = options || {};
       this.color = options.color || '#000';
       this.image = options.image || false;
@@ -40,6 +40,7 @@
           data = imageData.data,
           tr, tg, tb,
           r, g, b,
+          _r, _g, _b,
           source,
           isImage = false;
 
@@ -94,14 +95,47 @@
             data[i + 2] = Math.min(255, b + tb);
             break;
           case 'diff':
+          case 'difference':
             data[i] = Math.abs(r - tr);
             data[i + 1] = Math.abs(g - tg);
             data[i + 2] = Math.abs(b - tb);
+            break;
+          case 'subtract':
+            _r = r - tr;
+            _g = g - tg;
+            _b = b - tb;
+
+            data[i] = (_r < 0) ? 0 : _r;
+            data[i + 1] = (_g < 0) ? 0 : _g;
+            data[i + 2] = (_b < 0) ? 0 : _b;
+            break;
+          case 'darken':
+            data[i] = Math.min(r, tr);
+            data[i + 1] = Math.min(g, tg);
+            data[i + 2] = Math.min(b, tb);
+            break;
+          case 'lighten':
+            data[i] = Math.max(r, tr);
+            data[i + 1] = Math.max(g, tg);
+            data[i + 2] = Math.max(b, tb);
             break;
         }
       }
 
       context.putImageData(imageData, 0, 0);
+    },
+
+    /**
+     * Returns object representation of an instance
+     * @return {Object} Object representation of an instance
+     */
+    toObject: function() {
+      return {
+        color: this.color,
+        image: this.image,
+        mode: this.mode,
+        alpha: this.alpha
+      };
     }
   });
 

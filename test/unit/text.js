@@ -9,44 +9,47 @@
   var CHAR_WIDTH = 20;
 
   var REFERENCE_TEXT_OBJECT = {
-    'type':                'text',
-    'originX':             'left',
-    'originY':             'top',
-    'left':                0,
-    'top':                 0,
-    'width':               CHAR_WIDTH,
-    'height':              52,
-    'fill':                'rgb(0,0,0)',
-    'stroke':              null,
-    'strokeWidth':         1,
-    'strokeDashArray':     null,
-    'strokeLineCap':       'butt',
-    'strokeLineJoin':      'miter',
-    'strokeMiterLimit':    10,
-    'scaleX':              1,
-    'scaleY':              1,
-    'angle':               0,
-    'flipX':               false,
-    'flipY':               false,
-    'opacity':             1,
-    'shadow':              null,
-    'visible':             true,
-    'clipTo':              null,
-    'backgroundColor':     '',
-    'text':                'x',
-    'fontSize':            40,
-    'fontWeight':          'normal',
-    'fontFamily':          'Times New Roman',
-    'fontStyle':           '',
-    'lineHeight':          1.3,
-    'textDecoration':      '',
-    'textAlign':           'left',
-    'path':                null,
-    'textBackgroundColor': '',
-    'useNative':           true
+    'type':                      'text',
+    'originX':                   'left',
+    'originY':                   'top',
+    'left':                      0,
+    'top':                       0,
+    'width':                     CHAR_WIDTH,
+    'height':                    52.43,
+    'fill':                      'rgb(0,0,0)',
+    'stroke':                    null,
+    'strokeWidth':               1,
+    'strokeDashArray':           null,
+    'strokeLineCap':             'butt',
+    'strokeLineJoin':            'miter',
+    'strokeMiterLimit':          10,
+    'scaleX':                    1,
+    'scaleY':                    1,
+    'angle':                     0,
+    'flipX':                     false,
+    'flipY':                     false,
+    'opacity':                   1,
+    'shadow':                    null,
+    'visible':                   true,
+    'clipTo':                    null,
+    'backgroundColor':           '',
+    'text':                      'x',
+    'fontSize':                  40,
+    'fontWeight':                'normal',
+    'fontFamily':                'Times New Roman',
+    'fontStyle':                 '',
+    'lineHeight':                1.16,
+    'textDecoration':            '',
+    'textAlign':                 'left',
+    'textBackgroundColor':       '',
+    'fillRule':                  'nonzero',
+    'globalCompositeOperation':  'source-over',
+    'skewX':                      0,
+    'skewY':                      0,
+    'transformMatrix':           null  
   };
 
-  var TEXT_SVG = '<g transform="translate(10 26)">\n<text font-family="Times New Roman" font-size="40" font-weight="normal" style="stroke: none; stroke-width: 1; stroke-dasharray: ; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: rgb(0,0,0); fill-rule: source-over; opacity: 1;" transform="translate(-10 39)"><tspan x="0" y="-26" fill="rgb(0,0,0)">x</tspan></text>\n</g>\n';
+  var TEXT_SVG = '\t<g transform="translate(10.5 26.72)">\n\t\t<text font-family="Times New Roman" font-size="40" font-weight="normal" style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" ><tspan x="-10" y="8.98" fill="rgb(0,0,0)">x</tspan></text>\n\t</g>\n';
 
   test('constructor', function() {
     ok(fabric.Text);
@@ -153,10 +156,10 @@
     // text.width = CHAR_WIDTH;
 
     var expectedObject = fabric.util.object.extend(fabric.util.object.clone(REFERENCE_TEXT_OBJECT), {
-      left: 4,
-      top: -10.4,
+      left: 4.5,
+      top: -4.11,
       width: 8,
-      height: 20.8,
+      height: 20.97,
       fontSize: 16,
       originX: 'left'
     });
@@ -195,9 +198,9 @@
     var expectedObject = fabric.util.object.extend(fabric.util.object.clone(REFERENCE_TEXT_OBJECT), {
       /* left varies slightly due to node-canvas rendering */
       left:             fabric.util.toFixed(textWithAttrs.left + '', 2),
-      top:              -59.95,
+      top:              -9.22,
       width:            CHAR_WIDTH,
-      height:           159.9,
+      height:           161.23,
       fill:             'rgb(255,255,255)',
       opacity:          0.45,
       stroke:           'blue',
@@ -243,16 +246,20 @@
   test('toSVG', function() {
     var text = new fabric.Text('x');
 
+    function removeTranslate(str) {
+      return str.replace(/translate\(.*?\)/, '');
+    }
+
     // temp workaround for text objects not obtaining width under node
     text.width = CHAR_WIDTH;
 
-    equal(text.toSVG(), TEXT_SVG);
+    equal(removeTranslate(text.toSVG()), removeTranslate(TEXT_SVG));
 
     text.setFontFamily('"Arial Black", Arial');
     // temp workaround for text objects not obtaining width under node
     text.width = CHAR_WIDTH;
 
-    equal(text.toSVG(), TEXT_SVG.replace('font-family="Times New Roman"', 'font-family="\'Arial Black\', Arial"'));
+    equal(removeTranslate(text.toSVG()), removeTranslate(TEXT_SVG.replace('font-family="Times New Roman"', 'font-family="\'Arial Black\', Arial"')));
   });
 
 })();

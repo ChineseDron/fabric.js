@@ -6,7 +6,7 @@
       extend = fabric.util.object.extend;
 
   if (fabric.Rect) {
-    console.warn('fabric.Rect is already defined');
+    fabric.warn('fabric.Rect is already defined');
     return;
   }
 
@@ -49,7 +49,6 @@
      * @default
      */
     ry:   0,
-
 
     /**
      * Used to specify dash pattern for stroke on this object
@@ -99,16 +98,12 @@
           ry = this.ry ? Math.min(this.ry, this.height / 2) : 0,
           w = this.width,
           h = this.height,
-          x = noTransform ? this.left : 0,
-          y = noTransform ? this.top : 0,
+          x = noTransform ? this.left : -this.width / 2,
+          y = noTransform ? this.top : -this.height / 2,
           isRounded = rx !== 0 || ry !== 0,
           k = 1 - 0.5522847498 /* "magic number" for bezier approximations of arcs (http://itc.ktu.lt/itc354/Riskus354.pdf) */;
 
       ctx.beginPath();
-
-      if (!noTransform) {
-        ctx.translate(-this.width / 2, -this.height / 2);
-      }
 
       ctx.moveTo(x + rx, y);
 
@@ -172,10 +167,10 @@
      */
     toSVG: function(reviver) {
       var markup = this._createBaseSVGMarkup(), x = this.left, y = this.top;
-      if (!this.group) {
+      if (!(this.group && this.group.type === 'path-group')) {
         x = -this.width / 2;
         y = -this.height / 2;
-	    }
+      }
       markup.push(
         '<rect ',
           'x="', x, '" y="', y,
@@ -221,13 +216,14 @@
       return null;
     }
     options = options || { };
-    
+
     var parsedAttributes = fabric.parseAttributes(element, fabric.Rect.ATTRIBUTE_NAMES);
-    
+
     parsedAttributes.left = parsedAttributes.left || 0;
     parsedAttributes.top  = parsedAttributes.top  || 0;
-    
-    return new fabric.Rect(extend((options ? fabric.util.object.clone(options) : { }), parsedAttributes));
+    var rect = new fabric.Rect(extend((options ? fabric.util.object.clone(options) : { }), parsedAttributes));
+    rect.visible = rect.width > 0 && rect.height > 0;
+    return rect;
   };
   /* _FROM_SVG_END_ */
 

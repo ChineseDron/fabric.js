@@ -15,37 +15,45 @@
       IMG_HEIGHT  = 110;
 
   var REFERENCE_IMG_OBJECT = {
-    'type':               'image',
-    'originX':            'left',
-    'originY':            'top',
-    'left':               0,
-    'top':                0,
-    'width':              IMG_WIDTH, // node-canvas doesn't seem to allow setting width/height on image objects
-    'height':             IMG_HEIGHT, // or does it now?
-    'fill':               'rgb(0,0,0)',
-    'stroke':             null,
-    'strokeWidth':        1,
-    'strokeDashArray':    null,
-    'strokeLineCap':      'butt',
-    'strokeLineJoin':     'miter',
-    'strokeMiterLimit':   10,
-    'scaleX':             1,
-    'scaleY':             1,
-    'angle':              0,
-    'flipX':              false,
-    'flipY':              false,
-    'opacity':            1,
-    'src':                fabric.isLikelyNode ? undefined : IMG_SRC,
-    'shadow':             null,
-    'visible':            true,
-    'backgroundColor':    '',
-    'clipTo':             null,
-    'filters':            [],
-    'crossOrigin':        ''
+    'type':                     'image',
+    'originX':                  'left',
+    'originY':                  'top',
+    'left':                     0,
+    'top':                      0,
+    'width':                    IMG_WIDTH, // node-canvas doesn't seem to allow setting width/height on image objects
+    'height':                   IMG_HEIGHT, // or does it now?
+    'fill':                     'rgb(0,0,0)',
+    'stroke':                   null,
+    'strokeWidth':              1,
+    'strokeDashArray':          null,
+    'strokeLineCap':            'butt',
+    'strokeLineJoin':           'miter',
+    'strokeMiterLimit':         10,
+    'scaleX':                   1,
+    'scaleY':                   1,
+    'angle':                    0,
+    'flipX':                    false,
+    'flipY':                    false,
+    'opacity':                  1,
+    'src':                      fabric.isLikelyNode ? undefined : IMG_SRC,
+    'shadow':                   null,
+    'visible':                  true,
+    'backgroundColor':          '',
+    'clipTo':                   null,
+    'filters':                  [],
+    'fillRule':                 'nonzero',
+    'globalCompositeOperation': 'source-over',
+    'skewX':                    0,
+    'skewY':                    0,
+    'transformMatrix':          null,
+    'crossOrigin':              '',
+    'alignX':                   'none',
+    'alignY':                   'none',
+    'meetOrSlice':              'meet'
   };
 
   function _createImageElement() {
-    return fabric.isLikelyNode ? new (require('canvas').Image) : fabric.document.createElement('img');
+    return fabric.isLikelyNode ? new (require('canvas').Image)() : fabric.document.createElement('img');
   }
 
   function _createImageObject(width, height, callback) {
@@ -58,12 +66,12 @@
   }
 
   function createImageObject(callback) {
-    return _createImageObject(IMG_WIDTH, IMG_HEIGHT, callback)
+    return _createImageObject(IMG_WIDTH, IMG_HEIGHT, callback);
   }
 
-  function createSmallImageObject(callback) {
-    return _createImageObject(IMG_WIDTH / 2, IMG_HEIGHT / 2, callback);
-  }
+  // function createSmallImageObject(callback) {
+  //   return _createImageObject(IMG_WIDTH / 2, IMG_HEIGHT / 2, callback);
+  // }
 
   function setSrc(img, src, callback) {
     if (fabric.isLikelyNode) {
@@ -110,6 +118,51 @@
     });
   });
 
+  asyncTest('toObject with resize filter', function() {
+    createImageObject(function(image) {
+      ok(typeof image.toObject == 'function');
+      var filter = new fabric.Image.filters.Resize({resizeType: 'bilinear', scaleX: 0.3, scaleY: 0.3});
+      image.resizeFilters.push(filter);
+      ok(image.resizeFilters[0] instanceof fabric.Image.filters.Resize, 'should inherit from fabric.Image.filters.Resize');
+
+      var toObject = image.toObject();
+      deepEqual(toObject.resizeFilters[0], filter.toObject());
+      fabric.Image.fromObject(toObject, function(imageFromObject) {
+        var filterFromObj = imageFromObject.resizeFilters[0];
+        deepEqual(filterFromObj, filter);
+        ok(filterFromObj instanceof fabric.Image.filters.Resize, 'should inherit from fabric.Image.filters.Resize');
+        equal(filterFromObj.scaleX, 0.3);
+        equal(filterFromObj.scaleY, 0.3);
+        equal(filterFromObj.resizeType, 'bilinear');
+      });
+      start();
+    });
+  });
+
+  // asyncTest('toObject without default values', function() {
+  //   createImageObject(function(image) {
+
+  //     image.includeDefaultValues = false;
+
+  //     var object = image.toObject();
+
+  //     // workaround for node-canvas sometimes producing images with width/height and sometimes not
+  //     if (object.width === 0) {
+  //       object.width = IMG_WIDTH;
+  //     }
+  //     if (object.height === 0) {
+  //       object.height = IMG_HEIGHT;
+  //     }
+  //     deepEqual(object, {
+  //       type: 'image',
+  //       // why the hell deepEqual fail [] == [] check?!
+  //       filters: [],
+  //       crossOrigin: ''
+  //     });
+  //     start();
+  //   });
+  // });
+
   asyncTest('toString', function() {
     createImageObject(function(image) {
       ok(typeof image.toString == 'function');
@@ -150,18 +203,16 @@
     createImageObject(function(image) {
       equal(image.crossOrigin, '', 'initial crossOrigin value should be set');
 
-      start();
-
       var elImage = _createImageElement();
       elImage.crossOrigin = 'anonymous';
-      var image = new fabric.Image(elImage);
+      image = new fabric.Image(elImage);
       equal(image.crossOrigin, '', 'crossOrigin value on an instance takes precedence');
 
       var objRepr = image.toObject();
       equal(objRepr.crossOrigin, '', 'toObject should return proper crossOrigin value');
 
       var elImage2 = _createImageElement();
-	  elImage2.crossOrigin = 'anonymous';
+      elImage2.crossOrigin = 'anonymous';
       image.setElement(elImage2);
       equal(elImage2.crossOrigin, 'anonymous', 'setElement should set proper crossOrigin on an img element');
 
@@ -170,7 +221,7 @@
         start();
         return;
       }
-	  
+
       fabric.Image.fromObject(objRepr, function(img) {
         equal(img.crossOrigin, '');
         start();

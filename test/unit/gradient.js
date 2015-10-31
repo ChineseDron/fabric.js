@@ -92,7 +92,7 @@
 
   test('toObject linearGradient', function() {
     var gradient = createLinearGradient();
-
+    gradient.gradientTransform = [1, 0, 0, 1, 50, 50];
     ok(typeof gradient.toObject == 'function');
 
     var object = gradient.toObject();
@@ -103,7 +103,7 @@
     equal(object.coords.y2, gradient.coords.y2);
 
     equal(object.type, gradient.type);
-
+    deepEqual(object.gradientTransform, gradient.gradientTransform);
     equal(object.colorStops, gradient.colorStops);
   });
 
@@ -162,8 +162,8 @@
 
     // TODO: need to double check these values
 
-    equal(gradient.coords.x1, 0);
-    equal(gradient.coords.y1, 0);
+    equal(gradient.coords.x1, 50);
+    equal(gradient.coords.y1, 50);
 
     //equal(gradient.coords.x2, 100);
     //equal(gradient.coords.y2, 100);
@@ -175,6 +175,31 @@
     equal(gradient.colorStops[1].color, 'rgb(255,255,255)');
 
     equal(gradient.colorStops[0].opacity, 0);
+  });
+
+  test('fromElement without stop', function() {
+    ok(typeof fabric.Gradient.fromElement == 'function');
+
+    var element = fabric.document.createElement('linearGradient');
+    var stop1 = fabric.document.createElement('stop');
+    var stop2 = fabric.document.createElement('stop');
+
+    stop1.setAttribute('stop-color', 'white');
+
+    stop2.setAttribute('offset', '100%');
+    stop2.setAttribute('stop-color', 'black');
+    stop2.setAttribute('stop-opacity', '0');
+
+    element.appendChild(stop1);
+    element.appendChild(stop2);
+
+    var object = new fabric.Object({ width: 100, height: 100 });
+    var gradient = fabric.Gradient.fromElement(element, object);
+
+    ok(gradient instanceof fabric.Gradient);
+
+    equal(gradient.colorStops[0].offset, 1);
+    equal(gradient.colorStops[1].offset, 0);
   });
 
   test('fromElement radialGradient', function() {
@@ -200,8 +225,8 @@
 
     // TODO: need to double check these values
 
-    equal(gradient.coords.x1, 0);
-    equal(gradient.coords.y1, 0);
+    equal(gradient.coords.x1, 50);
+    equal(gradient.coords.y1, 50);
 
     //equal(gradient.coords.x2, 100);
     //equal(gradient.coords.y2, 100);
@@ -236,8 +261,8 @@
 
     // TODO: need to double check these values
 
-    equal(gradient.coords.x1, 0);
-    equal(gradient.coords.y1, 0);
+    equal(gradient.coords.x1, 50);
+    equal(gradient.coords.y1, 50);
 
     //equal(gradient.coords.x2, 100);
     //equal(gradient.coords.y2, 100);
@@ -248,7 +273,7 @@
     equal(gradient.colorStops[0].color, 'rgb(0,0,0)');
     equal(gradient.colorStops[1].color, 'rgb(255,255,255)');
     deepEqual(gradient.gradientTransform, [ 3.321, -0.6998, 0.4077, 1.9347, -440.9168, -408.0598 ]);
-  })
+  });
 
   test('fromElement linearGradient colorStop attributes/styles', function() {
     ok(typeof fabric.Gradient.fromElement == 'function');
@@ -288,8 +313,8 @@
 
     // TODO: need to double check these values
 
-    equal(gradient.coords.x1, 0);
-    equal(gradient.coords.y1, 0);
+    equal(gradient.coords.x1, 50);
+    equal(gradient.coords.y1, 50);
 
     //equal(gradient.coords.x2, 100);
     //equal(gradient.coords.y2, 100);
@@ -348,8 +373,8 @@
 
     // TODO: need to double check these values
 
-    equal(gradient.coords.x1, 0);
-    equal(gradient.coords.y1, 0);
+    equal(gradient.coords.x1, 50);
+    equal(gradient.coords.y1, 50);
 
     //equal(gradient.coords.x2, 100);
     //equal(gradient.coords.y2, 100);

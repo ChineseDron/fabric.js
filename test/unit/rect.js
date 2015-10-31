@@ -1,32 +1,37 @@
 (function() {
 
   var REFERENCE_RECT = {
-    'type':               'rect',
-    'originX':            'left',
-    'originY':            'top',
-    'left':               0,
-    'top':                0,
-    'width':              0,
-    'height':             0,
-    'fill':               'rgb(0,0,0)',
-    'stroke':             null,
-    'strokeWidth':        1,
-    'strokeDashArray':    null,
-    'strokeLineCap':      'butt',
-    'strokeLineJoin':     'miter',
-    'strokeMiterLimit':   10,
-    'scaleX':             1,
-    'scaleY':             1,
-    'angle':              0,
-    'flipX':              false,
-    'flipY':              false,
-    'opacity':            1,
-    'shadow':             null,
-    'visible':            true,
-    'backgroundColor':    '',
-    'clipTo':             null,
-    'rx':                 0,
-    'ry':                 0,
+    'type':                     'rect',
+    'originX':                  'left',
+    'originY':                  'top',
+    'left':                     0,
+    'top':                      0,
+    'width':                    0,
+    'height':                   0,
+    'fill':                     'rgb(0,0,0)',
+    'stroke':                   null,
+    'strokeWidth':              1,
+    'strokeDashArray':          null,
+    'strokeLineCap':            'butt',
+    'strokeLineJoin':           'miter',
+    'strokeMiterLimit':         10,
+    'scaleX':                   1,
+    'scaleY':                   1,
+    'angle':                    0,
+    'flipX':                    false,
+    'flipY':                    false,
+    'opacity':                  1,
+    'shadow':                   null,
+    'visible':                  true,
+    'backgroundColor':          '',
+    'clipTo':                   null,
+    'fillRule':                 'nonzero',
+    'globalCompositeOperation': 'source-over',
+    'transformMatrix':          null,
+    'rx':                       0,
+    'ry':                       0,
+    'skewX':                    0,
+    'skewY':                    0,
   };
 
   QUnit.module('fabric.Rect');
@@ -62,6 +67,13 @@
     var rect = fabric.Rect.fromObject(REFERENCE_RECT);
     ok(rect instanceof fabric.Rect);
     deepEqual(rect.toObject(), REFERENCE_RECT);
+
+    var expectedObject = fabric.util.object.extend({ }, REFERENCE_RECT);
+    expectedObject.fill = {"type":"linear","coords":{"x1":0,"y1":0,"x2":200,"y2":0},"colorStops":[{"offset":"0","color":"rgb(255,0,0)","opacity":1},{"offset":"1","color":"rgb(0,0,255)","opacity":1}],"offsetX":0,"offsetY":0};
+    expectedObject.stroke = {"type":"linear","coords":{"x1":0,"y1":0,"x2":200,"y2":0},"colorStops":[{"offset":"0","color":"rgb(255,0,0)","opacity":1},{"offset":"1","color":"rgb(0,0,255)","opacity":1}],"offsetX":0,"offsetY":0};
+    rect = fabric.Rect.fromObject(expectedObject);
+    ok(rect.fill instanceof fabric.Gradient);
+    ok(rect.stroke instanceof fabric.Gradient);
   });
 
   test('fabric.Rect.fromElement', function() {
@@ -69,9 +81,10 @@
 
     var elRect = fabric.document.createElement('rect');
     var rect = fabric.Rect.fromElement(elRect);
-
+    var expectedObject = fabric.util.object.extend({ }, REFERENCE_RECT);
+    expectedObject.visible = false;
     ok(rect instanceof fabric.Rect);
-    deepEqual(rect.toObject(), REFERENCE_RECT);
+    deepEqual(rect.toObject(), expectedObject);
   });
 
   test('fabric.Rect.fromElement with custom attributes', function() {
@@ -128,10 +141,10 @@
   });
 
   test('toSVG with rounded corners', function() {
-    var rect = new fabric.Rect({ width: 100, height: 100, rx: 20, ry: 30 });
+    var rect = new fabric.Rect({ width: 100, height: 100, rx: 20, ry: 30, strokeWidth: 0 });
     var svg = rect.toSVG();
 
-    equal(svg, '<rect x="-50" y="-50" rx="20" ry="30" width="100" height="100" style="stroke: none; stroke-width: 1; stroke-dasharray: ; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: rgb(0,0,0); fill-rule: source-over; opacity: 1;" transform="translate(50 50)"/>\n');
+    equal(svg, '<rect x="-50" y="-50" rx="20" ry="30" width="100" height="100" style="stroke: none; stroke-width: 0; stroke-dasharray: none; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" transform="translate(50 50)"/>\n');
   });
 
   test('toObject without default values', function() {
